@@ -1,5 +1,5 @@
 # Map Visualization
-These apps use the Google Map API. 
+This app uses Google Map API. 
 
 ## How to add Google Map API key
 Add your Google Map API key in map_api_key.js file.
