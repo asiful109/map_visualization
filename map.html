@@ -35,6 +35,7 @@
             padding: 10px;
             margin-bottom: 10px;
             cursor: pointer;
+            border-radius: 5px;
         }
         .location-button:hover {
             background-color: #0056b3;
@@ -53,20 +54,37 @@
             background-color: #eee;
             border-radius: 5px;
         }
+        .sidebar-section {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .input-controls {
+            margin-bottom: 20px;
+        }
+        h2 {
+            margin-top: 0;
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div id="sidebar">
-        <h2>Location Details</h2>
-        <div id="details"></div>
+         <!-- <h2>Map Controls</h2> -->
+        <div id="controls" class="sidebar-section input-controls">
+            <!-- First compartment for input controls -->
+        </div>
+        <!-- <h2>Location Details</h2> -->
+        <div id="marker-info" class="sidebar-section">
+            <!-- Second compartment for marker info -->
+        </div>
     </div>
     <script src="data.js"></script>
     <script src="/Users/md.asifulislam/github.com/map_api_key.js"></script>
     <script>
         function loadMapScript(apiKey) {
             const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=drawing&callback=initMap`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry,drawing&callback=initMap`;
             script.async = true;
             script.defer = true;
             document.head.appendChild(script);

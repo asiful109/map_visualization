@@ -5,6 +5,7 @@ let allMarkers = [];
 let currentRectangle = null;
 let currentCircle = null;
 let previouslySelectedMarker = null;
+let currentUnit = 'miles'; // Default unit
 
 function initMap() {
     map = new google.maps.Map(document.getElementById("map"), {
@@ -25,6 +26,7 @@ function initMap() {
         marker.addListener("click", () => {
             highlightMarker(marker);
             displayDetails(markerData, marker);
+            showClearButton(); // Show clear button on marker click
         });
 
         marker.markerData = markerData; // Attach markerData to the marker object
@@ -71,14 +73,15 @@ function initMap() {
 
         if (event.type === 'rectangle') {
             currentRectangle = event.overlay;
-            setSelectedMarkersOpacity(currentRectangle);
+            setSelectedMarkersOpacity(currentRectangle, false); // Rectangle does not need distance calculations
         } else if (event.type === 'circle') {
             currentCircle = event.overlay;
-            setSelectedMarkersOpacity(currentCircle);
+            setSelectedMarkersOpacity(currentCircle, true); // Circle needs distance calculations
         }
 
+        clearSidebar(); // Clear sidebar for both rectangle and circle
         showExportButton();
-        showClearButton();
+        showClearButton(); // Show clear button on drawing complete
     });
 }
 
@@ -100,7 +103,7 @@ function highlightMarker(selectedMarker) {
     previouslySelectedMarker = selectedMarker; // Update the previously selected marker
 }
 
-function setSelectedMarkersOpacity(shape) {
+function setSelectedMarkersOpacity(shape, calculateDistance) {
     selectedMarkers = [];
     const bounds = shape.getBounds ? shape.getBounds() : null;
     const center = shape.getCenter ? shape.getCenter() : null;
@@ -108,11 +111,18 @@ function setSelectedMarkersOpacity(shape) {
 
     allMarkers.forEach(marker => {
         let isSelected = false;
-        if (bounds) {
-            isSelected = bounds.contains(marker.getPosition());
-        } else if (center && radius) {
+        marker.distanceFromCenter = null; // Reset distance initially
+
+        if (calculateDistance && center && radius) {
+            // Circle selection
             const distance = google.maps.geometry.spherical.computeDistanceBetween(center, marker.getPosition());
             isSelected = distance <= radius;
+            if (isSelected) {
+                marker.distanceFromCenter = distance; // Store distance only if selected
+            }
+        } else if (bounds) {
+            // Rectangle selection
+            isSelected = bounds.contains(marker.getPosition());
         }
 
         if (isSelected) {
@@ -124,8 +134,19 @@ function setSelectedMarkersOpacity(shape) {
     });
 }
 
+function clearSidebar() {
+    const detailsDiv = document.getElementById("controls");
+    const markerInfoDiv = document.getElementById("marker-info");
+    if (detailsDiv) {
+        detailsDiv.innerHTML = ''; // Clear the input details section
+    }
+    if (markerInfoDiv) {
+        markerInfoDiv.innerHTML = ''; // Clear the marker info section
+    }
+}
+
 function showExportButton() {
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = document.getElementById('controls');
     let exportButton = document.getElementById('exportButton');
     if (!exportButton) {
         exportButton = document.createElement('button');
@@ -138,7 +159,7 @@ function showExportButton() {
 }
 
 function showClearButton() {
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = document.getElementById('controls');
     let clearButton = document.getElementById('clearButton');
     if (!clearButton) {
         clearButton = document.createElement('button');
@@ -165,7 +186,7 @@ function clearSelection() {
     });
     previouslySelectedMarker = null; // Reset previously selected marker
     selectedMarkers = [];
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = document.getElementById('controls');
     const exportButton = document.getElementById('exportButton');
     const clearButton = document.getElementById('clearButton');
     if (exportButton) {
@@ -174,14 +195,17 @@ function clearSelection() {
     if (clearButton) {
         sidebar.removeChild(clearButton);
     }
+    clearSidebar(); // Clear the details section
 }
 
-function drawCircle(marker, radiusMiles) {
+function drawCircle(marker, radius) {
     if (currentCircle) {
         currentCircle.setMap(null);
     }
 
-    const radiusMeters = radiusMiles * 1609.34; // Convert miles to meters
+    const conversionFactor = currentUnit === 'miles' ? 1609.34 : 1000; // Convert miles to meters or km to meters
+
+    const radiusMeters = radius * conversionFactor;
 
     currentCircle = new google.maps.Circle({
         strokeColor: "#FF0000",
@@ -194,25 +218,27 @@ function drawCircle(marker, radiusMiles) {
         radius: radiusMeters,
     });
 
-    setSelectedMarkersOpacity(currentCircle);
+    setSelectedMarkersOpacity(currentCircle, true);
     showExportButton();
-    showClearButton();
+    showClearButton(); // Show clear button when a circle is drawn
 }
 
 function exportSelectedMarkers() {
     const selectedData = selectedMarkers.map(marker => {
         const data = marker.markerData;
+        const distanceMiles = marker.distanceFromCenter ? (marker.distanceFromCenter / 1609.34).toFixed(2) : "N/A"; // Convert meters to miles if available
         return {
             title: data.title,
             lat: marker.getPosition().lat(),
             lng: marker.getPosition().lng(),
+            distance: distanceMiles,
             sentences: data.sentence.join('|')
         };
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-        + "title,latitude,longitude,sentences\n" 
-        + selectedData.map(e => `${e.title},${e.lat},${e.lng},"${e.sentences}"`).join("\n");
+    const csvContent = "data:text/csv;charset=UTF-8," 
+        + "title,latitude,longitude,distance,sentences\n" 
+        + selectedData.map(e => `${e.title},${e.lat},${e.lng},${e.distance},"${e.sentences}"`).join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -224,35 +250,74 @@ function exportSelectedMarkers() {
 }
 
 function displayDetails(markerData, marker) {
-    const detailsDiv = document.getElementById("details");
-    detailsDiv.innerHTML = '';
+    const detailsDiv = document.getElementById("controls");
+    const markerInfoDiv = document.getElementById("marker-info");
+
+    if (!detailsDiv || !markerInfoDiv) {
+        console.error("Cannot find sidebar elements.");
+        return;
+    }
+
+    detailsDiv.innerHTML = ''; // Clear the first compartment
+    markerInfoDiv.innerHTML = ''; // Clear the second compartment
+
+    // First Compartment: Input and Control Section
+    const unitDiv = document.createElement("div");
+    unitDiv.style.marginBottom = "10px";
+    const milesRadio = document.createElement("input");
+    milesRadio.type = "radio";
+    milesRadio.name = "unit";
+    milesRadio.value = "miles";
+    milesRadio.checked = currentUnit === 'miles';
+    milesRadio.onchange = () => currentUnit = 'miles';
+
+    const milesLabel = document.createElement("label");
+    milesLabel.innerText = "Miles";
+
+    const kmRadio = document.createElement("input");
+    kmRadio.type = "radio";
+    kmRadio.name = "unit";
+    kmRadio.value = "km";
+    kmRadio.checked = currentUnit === 'km';
+    kmRadio.onchange = () => currentUnit = 'km';
+
+    const kmLabel = document.createElement("label");
+    kmLabel.innerText = "Kilometers";
+
+    unitDiv.appendChild(milesRadio);
+    unitDiv.appendChild(milesLabel);
+    unitDiv.appendChild(document.createTextNode(" "));
+    unitDiv.appendChild(kmRadio);
+    unitDiv.appendChild(kmLabel);
+    detailsDiv.appendChild(unitDiv);
 
     const inputDiv = document.createElement("div");
     inputDiv.style.marginBottom = "10px";
     const input = document.createElement("input");
     input.type = "number";
-    input.placeholder = "Radius in miles";
+    input.placeholder = "Radius";
     input.style.marginRight = "10px";
     const button = document.createElement("button");
     button.className = "location-button";
     button.innerText = "Draw Circle";
     button.onclick = () => {
-        const radiusMiles = parseFloat(input.value);
-        if (!isNaN(radiusMiles) && radiusMiles > 0) {
-            drawCircle(marker, radiusMiles);
+        const radius = parseFloat(input.value);
+        if (!isNaN(radius) && radius > 0) {
+            drawCircle(marker, radius);
         }
     };
     inputDiv.appendChild(input);
     inputDiv.appendChild(button);
     detailsDiv.appendChild(inputDiv);
 
-    const titleButton = document.createElement("button");
-    titleButton.className = "location-button";
-    titleButton.innerHTML = `${markerData.title} <span>&times;</span>`;
-    titleButton.querySelector("span").onclick = () => {
-        detailsDiv.innerHTML = '';
-    };
-    detailsDiv.appendChild(titleButton);
+    // Second Compartment: Marker Information Section
+    const titleParagraph = document.createElement("p");
+    titleParagraph.innerHTML = `<strong>Location:</strong> ${markerData.title}`;
+    markerInfoDiv.appendChild(titleParagraph);
+
+    const relatedSentencesHeader = document.createElement("h4");
+    relatedSentencesHeader.innerText = "Related Sentences";
+    markerInfoDiv.appendChild(relatedSentencesHeader);
 
     const list = document.createElement("ul");
     markerData.sentence.forEach((sentence, index) => {
@@ -260,5 +325,5 @@ function displayDetails(markerData, marker) {
         listItem.textContent = `${index + 1}. ${sentence}`;
         list.appendChild(listItem);
     });
-    detailsDiv.appendChild(list);
+    markerInfoDiv.appendChild(list);
 }
