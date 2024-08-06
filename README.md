@@ -1,10 +1,10 @@
 # Map Visualization
 These apps use the Google Map API. 
 
-##How to add Google Map API key
+## How to add Google Map API key
 Add your Google Map API key in map_api_key.js file.
 
-##How to add data
+## How to add data
 Add the data in the data.js in the following format:
 
 ```
